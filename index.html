@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>進化ゲーム 🦠➡️🐲 (Invincible Ver.)</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Segoe UI', sans-serif; }
+  canvas { display: block; }
+  #ui { position: absolute; top: 20px; left: 20px; color: white; font-size: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; }
+  #exp-bar-container { width: 280px; height: 26px; background: rgba(255,255,255,0.2); border-radius: 13px; margin-top: 8px; border: 2px solid rgba(255,255,255,0.4); overflow: hidden; }
+  #exp-bar { width: 0%; height: 100%; background: linear-gradient(90deg, #4caf50, #8bc34a); border-radius: 11px; transition: width 0.2s ease-out; }
+  #stage-info { font-size: 16px; opacity: 0.8; margin-top: 4px; }
+  #rebirth-info { font-size: 14px; color: #ffeb3b; margin-top: 4px; }
+  #world-info { font-size: 14px; color: #81d4fa; margin-top: 4px; }
+  #invincible-info { font-size: 16px; color: #ff9800; margin-top: 4px; font-weight: bold; text-shadow: 0 0 8px #ff9800; }
+  #skills-display { font-size: 14px; opacity: 0.9; margin-top: 8px; max-width: 350px; line-height: 1.6; }
+  #evolution-msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.5); color: white; font-size: 56px; font-weight: bold; text-shadow: 3px 3px 8px rgba(0,0,0,0.9); pointer-events: none; opacity: 0; transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+  .choice-panel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.92); padding: 40px; border-radius: 20px; border: 3px solid rgba(255,255,255,0.3); display: none; flex-direction: column; gap: 20px; min-width: 500px; max-width: 90vw; z-index: 10; }
+  .choice-panel h2 { color: white; text-align: center; margin: 0 0 20px 0; font-size: 32px; }
+  .choice-btn { background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); color: white; padding: 20px; font-size: 22px; border-radius: 12px; cursor: pointer; transition: all 0.3s; text-align: left; }
+  .choice-btn:hover { background: rgba(255,255,255,0.2); border-color: #ffeb3b; transform: scale(1.03); }
+  .choice-btn .key { display: inline-block; background: rgba(255,255,255,0.2); padding: 5px 12px; border-radius: 6px; margin-right: 15px; font-weight: bold; }
+  .choice-btn .desc { display: block; font-size: 14px; opacity: 0.7; margin-top: 6px; margin-left: 45px; }
+  .choice-btn .level { display: inline-block; background: #ffeb3b; color: #000; padding: 2px 8px; border-radius: 4px; margin-left: 10px; font-size: 14px; font-weight: bold; }
+  #gameover-panel { text-align: center; }
+  #gameover-panel h2 { color: #ff5252; }
+  #instructions { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.7); font-size: 16px; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<canvas id="minimapCanvas" width="180" height="180" style="position:absolute;bottom:20px;right:20px;border:2px solid rgba(255,255,255,0.4);border-radius:8px;background:rgba(0,0,0,0.5);"></canvas>
+<div id="ui">
+  <div id="stage-name">🦠 プランクトン</div>
+  <div id="exp-bar-container"><div id="exp-bar"></div></div>
+  <div id="stage-info"></div>
+  <div id="rebirth-info"></div>
+  <div id="world-info"></div>
+  <div id="invincible-info"></div>
+  <div id="skills-display"></div>
+</div>
+<div id="evolution-msg"></div>
+
+<div id="evolution-choice" class="choice-panel">
+  <h2>🧬 進化の選択 🧬</h2>
+  <div id="choices-container"></div>
+</div>
+
+<div id="skill-choice" class="choice-panel">
+  <h2>✨ スキルの選択 ✨</h2>
+  <div id="skill-choices-container"></div>
+</div>
+
+<div id="rebirth-choice" class="choice-panel">
+  <h2>🔄 転生の選択 🔄</h2>
+  <div style="color:white; text-align:center; margin-bottom:20px;">最終形態に到達しました！<br>転生して最初からやり直しますか？<br><span style="font-size:14px; opacity:0.7;">スキルは保持され、永久ボーナスが付与されます</span></div>
+  <div id="rebirth-choices-container"></div>
+</div>
+
+<div id="gameover-panel" class="choice-panel">
+  <h2>💀 食べられてしまった... 💀</h2>
+  <div id="gameover-info" style="color:white; font-size:18px; margin-bottom:20px;"></div>
+  <button class="choice-btn" onclick="restartGame()"><span class="key">R</span>🔄 もう一度挑戦する</button>
+</div>
+
+<div id="instructions">矢印キー / WASD で移動 🏃‍♂️💨 | Space: ダッシュ</div>
+
+<script>
+// ==========================================
+// 🌟 ゲームの定義
+// ==========================================
+let WORLD_WIDTH = 4000;
+let WORLD_HEIGHT = 4000;
+const INITIAL_WORLD_SIZE = 4000;
+const EXPAND_PER_EVOLUTION_TIER = 1000;
+const EXPAND_PER_REBIRTH = 2000;
+const EVOLUTION_TIER_INTERVAL = 5;
+
+const MAX_ENEMIES = 8;
+const AI_DETECT_RANGE = 600;
+const REBIRTH_EXP_REQUIRED = 100;
+const INVINCIBLE_DURATION = 3.0; // 進化後の無敵時間（秒）
+
+const EVOLUTION_TREE = {
+  'plancton': { name: '🦠 プランクトン', emoji: '🦠', speed: 300, size: 30, expToNext: 10, bgColor: '#0b132b', foodEmoji: '✨', foodSize: 20, theme: 'deepsea', next: ['crustacean'] },
+  'crustacean': { name: '🦐 甲殻類', emoji: '🦐', speed: 320, size: 38, expToNext: 14, bgColor: '#12263a', foodEmoji: '🫧', foodSize: 22, theme: 'deepsea', next: ['smallfish'] },
+  'smallfish': { name: '🐟 小魚', emoji: '🐟', speed: 340, size: 46, expToNext: 19, bgColor: '#1c355e', foodEmoji: '🪸', foodSize: 26, theme: 'sea', next: ['tropicalfish', 'frog'], isBranchPoint: true },
+  'tropicalfish': { name: '🐠 熱帯魚', emoji: '🐠', speed: 360, size: 55, expToNext: 25, bgColor: '#274c77', foodEmoji: '🐚', foodSize: 30, theme: 'sea', next: ['shark'] },
+  'shark': { name: '🦈 サメ', emoji: '🦈', speed: 380, size: 65, expToNext: 32, bgColor: '#0a2463', foodEmoji: '🐟', foodSize: 35, theme: 'sea', next: ['megashark', 'leviathan'], isBranchPoint: true },
+  'megashark': { name: '🦈 巨大サメ', emoji: '🦈', speed: 400, size: 80, expToNext: 40, bgColor: '#001845', foodEmoji: '🐠', foodSize: 42, theme: 'sea', next: ['megalodon'] },
+  'megalodon': { name: '🦈 メガロドン', emoji: '🦈', speed: 420, size: 100, expToNext: 50, bgColor: '#000814', foodEmoji: '🐋', foodSize: 50, theme: 'sea', next: ['primordialsaur'] },
+  'primordialsaur': { name: '🐋 原始海竜', emoji: '🐋', speed: 440, size: 125, expToNext: 62, bgColor: '#000510', foodEmoji: '🐙', foodSize: 60, theme: 'sea', next: ['oceanus'] },
+  'oceanus': { name: '🐳 海神', emoji: '🐳', speed: 460, size: 155, expToNext: 75, bgColor: '#000308', foodEmoji: '🦑', foodSize: 70, theme: 'sea', next: ['seadragon'] },
+  'seadragon': { name: '🐲 海竜王', emoji: '🐲', speed: 480, size: 190, expToNext: 90, bgColor: '#000205', foodEmoji: '🐟', foodSize: 80, theme: 'sea', next: ['leviathanking'] },
+  'leviathanking': { name: '🐉 海竜神', emoji: '🐉', speed: 500, size: 230, expToNext: 105, bgColor: '#000103', foodEmoji: '🐠', foodSize: 90, theme: 'sea', next: ['cosmicserpent'] },
+  'cosmicserpent': { name: '🐍 宇宙海蛇', emoji: '🐍', speed: 520, size: 270, expToNext: 120, bgColor: '#000002', foodEmoji: '🐚', foodSize: 100, theme: 'sea', next: ['eternaldragon'] },
+  'eternaldragon': { name: '🐲 永遠の竜', emoji: '🐲', speed: 540, size: 310, expToNext: 135, bgColor: '#000001', foodEmoji: '🪸', foodSize: 110, theme: 'sea', next: ['primordialgod'] },
+  'primordialgod': { name: '🐙 原始神', emoji: '🐙', speed: 560, size: 350, expToNext: 150, bgColor: '#000000', foodEmoji: '🫧', foodSize: 120, theme: 'sea', next: ['oceangod'] },
+  'oceangod': { name: '🐋 海洋神', emoji: '🐋', speed: 580, size: 400, expToNext: Infinity, bgColor: '#000000', foodEmoji: '✨', foodSize: 130, theme: 'sea', next: [] },
+  'leviathan': { name: '🐉 リバイアサン', emoji: '🐉', speed: 390, size: 90, expToNext: 45, bgColor: '#001233', foodEmoji: '🦑', foodSize: 45, theme: 'sea', next: ['deephorror'] },
+  'deephorror': { name: '🦑 深淵の恐怖', emoji: '🦑', speed: 410, size: 110, expToNext: 55, bgColor: '#000a1f', foodEmoji: '🐙', foodSize: 52, theme: 'sea', next: ['chaoslord'] },
+  'chaoslord': { name: '🐙 混沌の支配者', emoji: '🐙', speed: 430, size: 135, expToNext: 67, bgColor: '#000510', foodEmoji: '🦑', foodSize: 60, theme: 'sea', next: ['abyssalking'] },
+  'abyssalking': { name: '🦑 深淵の邪神', emoji: '🦑', speed: 450, size: 165, expToNext: 80, bgColor: '#000308', foodEmoji: '🐙', foodSize: 70, theme: 'sea', next: ['voidmaster'] },
+  'voidmaster': { name: '🕷️ 虚空の主', emoji: '🕷️', speed: 470, size: 200, expToNext: 95, bgColor: '#000205', foodEmoji: '🦂', foodSize: 80, theme: 'sea', next: ['darkleviathan'] },
+  'darkleviathan': { name: '🐉 闇のリバイアサン', emoji: '🐉', speed: 490, size: 240, expToNext: 110, bgColor: '#000103', foodEmoji: '🐍', foodSize: 90, theme: 'sea', next: ['eldritchgod'] },
+  'eldritchgod': { name: '🐙 旧支配神', emoji: '🐙', speed: 510, size: 280, expToNext: 125, bgColor: '#000002', foodEmoji: '🦑', foodSize: 100, theme: 'sea', next: ['abyssalgod'] },
+  'abyssalgod': { name: '🦑 深淵神', emoji: '🦑', speed: 530, size: 320, expToNext: 140, bgColor: '#000001', foodEmoji: '🐙', foodSize: 110, theme: 'sea', next: ['voidgod'] },
+  'voidgod': { name: '🕷️ 虚空神', emoji: '🕷️', speed: 550, size: 360, expToNext: 155, bgColor: '#000000', foodEmoji: '🦂', foodSize: 120, theme: 'sea', next: [] },
+  'frog': { name: '🐸 カエル', emoji: '🐸', speed: 360, size: 70, expToNext: 38, bgColor: '#3a5a40', foodEmoji: '🪰', foodSize: 35, theme: 'swamp', next: ['lizard'] },
+  'lizard': { name: '🦎 トカゲ', emoji: '🦎', speed: 380, size: 85, expToNext: 48, bgColor: '#588157', foodEmoji: '🐛', foodSize: 42, theme: 'land', next: ['smalldino', 'gator'], isBranchPoint: true },
+  'smalldino': { name: '🦖 小型恐竜', emoji: '🦖', speed: 400, size: 105, expToNext: 58, bgColor: '#a3b18a', foodEmoji: '🥩', foodSize: 50, theme: 'land', next: ['largedino'] },
+  'largedino': { name: '🦕 大型恐竜', emoji: '🦕', speed: 420, size: 130, expToNext: 70, bgColor: '#344e41', foodEmoji: '🌳', foodSize: 60, theme: 'jungle', next: ['ancientbehemoth'] },
+  'ancientbehemoth': { name: '🦣 古代巨獣', emoji: '🦣', speed: 440, size: 160, expToNext: 82, bgColor: '#2d3a2d', foodEmoji: '🌲', foodSize: 70, theme: 'jungle', next: ['earthking'] },
+  'earthking': { name: '🦏 大地の王', emoji: '🦏', speed: 460, size: 195, expToNext: 95, bgColor: '#1a2619', foodEmoji: '🦣', foodSize: 80, theme: 'jungle', next: ['titanosaur'] },
+  'titanosaur': { name: '🦖 ティタノサウルス', emoji: '🦖', speed: 480, size: 235, expToNext: 110, bgColor: '#121a12', foodEmoji: '🦕', foodSize: 90, theme: 'jungle', next: ['primordialbeast'] },
+  'primordialbeast': { name: '🦍 原始巨獣', emoji: '🦍', speed: 500, size: 280, expToNext: 125, bgColor: '#0d120d', foodEmoji: '🦖', foodSize: 100, theme: 'jungle', next: ['earthgod'] },
+  'earthgod': { name: '🦏 大地神', emoji: '🦏', speed: 520, size: 330, expToNext: 140, bgColor: '#080d08', foodEmoji: '🦣', foodSize: 110, theme: 'jungle', next: ['titanlord'] },
+  'titanlord': { name: '🦖 巨獣王', emoji: '🦖', speed: 540, size: 380, expToNext: 155, bgColor: '#050805', foodEmoji: '🦍', foodSize: 120, theme: 'jungle', next: ['primordialtitan'] },
+  'primordialtitan': { name: '🦣 原始タイタン', emoji: '🦣', speed: 560, size: 430, expToNext: Infinity, bgColor: '#000000', foodEmoji: '🦏', foodSize: 130, theme: 'jungle', next: [] },
+  'gator': { name: '🐊 大型ワニ', emoji: '🐊', speed: 390, size: 120, expToNext: 65, bgColor: '#606c38', foodEmoji: '🍖', foodSize: 55, theme: 'swamp', next: ['dragon'] },
+  'dragon': { name: '🐲 ドラゴン', emoji: '🐲', speed: 410, size: 150, expToNext: 78, bgColor: '#2d3a2d', foodEmoji: '🔥', foodSize: 65, theme: 'volcano', next: ['firedrake'] },
+  'firedrake': { name: '🦎 炎竜', emoji: '🦎', speed: 430, size: 185, expToNext: 92, bgColor: '#1a1a1a', foodEmoji: '💥', foodSize: 75, theme: 'volcano', next: ['skydragon'] },
+  'skydragon': { name: '🦅 天空竜', emoji: '🦅', speed: 450, size: 225, expToNext: 107, bgColor: '#0d0d0d', foodEmoji: '☁️', foodSize: 85, theme: 'volcano', next: ['divinedragon'] },
+  'divinedragon': { name: '🐲 神竜', emoji: '🐲', speed: 470, size: 270, expToNext: 122, bgColor: '#080808', foodEmoji: '🦅', foodSize: 95, theme: 'volcano', next: ['phoenix'] },
+  'phoenix': { name: '🦅 不死鳥', emoji: '🦅', speed: 490, size: 320, expToNext: 137, bgColor: '#050505', foodEmoji: '🐲', foodSize: 105, theme: 'volcano', next: ['dragongod'] },
+  'dragongod': { name: '🐲 竜神', emoji: '🐲', speed: 510, size: 370, expToNext: 152, bgColor: '#030303', foodEmoji: '🦅', foodSize: 115, theme: 'volcano', next: ['primordialdragon'] },
+  'primordialdragon': { name: '🐉 原始竜', emoji: '🐉', speed: 530, size: 420, expToNext: 167, bgColor: '#020202', foodEmoji: '🐲', foodSize: 125, theme: 'volcano', next: ['cosmicdragon'] },
+  'cosmicdragon': { name: '🐲 宇宙竜', emoji: '🐲', speed: 550, size: 470, expToNext: Infinity, bgColor: '#000000', foodEmoji: '🦅', foodSize: 135, theme: 'volcano', next: [] }
+};
+
+const SKILLS = {
+  'speed': { name: '🏃 疾風の足', desc: '移動速度 +25%', apply: (p, level) => { p.speedMultiplier = Math.pow(1.25, Math.min(level, 30)); } },
+  'magnet': { name: '🧲 磁石の力', desc: 'エサを引き寄せる', apply: (p, level) => { p.magnetRange = 150 + level * 50; } },
+  'expBoost': { name: '📚 学習能力', desc: '経験値獲得量 2倍', apply: (p, level) => { p.expMultiplier = Math.pow(2, Math.min(level, 20)); } },
+  'shield': { name: '🛡️ 鉄壁の守り', desc: '食べられずに済む回数 +1', apply: (p, level) => { p.shieldCount = level; } },
+  'dash': { name: '💨 瞬間加速', desc: 'Spaceキーでダッシュ可能', apply: (p, level) => { p.canDash = true; p.dashSpeedMultiplier = 2.0 + Math.min(level, 20) * 0.5; p.dashCooldownReduction = Math.max(0.2, 1 - (level - 1) * 0.1); } },
+  'growth': { name: '📏 巨大化', desc: '当たり判定が20%大きくなる', apply: (p, level) => { p.sizeMultiplier = Math.pow(1.2, Math.min(level, 30)); } },
+  'regen': { name: '💚 再生能力', desc: '食べられそうになったら耐える回数 +1', apply: (p, level) => { p.regenCount = level; } },
+  'stealth': { name: '👻 隠密行動', desc: '敵から発見されにくくなる', apply: (p, level) => { p.stealthRange = Math.pow(0.7, Math.min(level, 10)); } }
+};
+const SKILL_KEYS = Object.keys(SKILLS);
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const miniCanvas = document.getElementById('minimapCanvas');
+const miniCtx = miniCanvas.getContext('2d');
+const stageNameEl = document.getElementById('stage-name');
+const expBarEl = document.getElementById('exp-bar');
+const stageInfoEl = document.getElementById('stage-info');
+const rebirthInfoEl = document.getElementById('rebirth-info');
+const worldInfoEl = document.getElementById('world-info');
+const invincibleInfoEl = document.getElementById('invincible-info');
+const skillsDisplayEl = document.getElementById('skills-display');
+const evolutionMsgEl = document.getElementById('evolution-msg');
+const evolutionChoiceEl = document.getElementById('evolution-choice');
+const choicesContainerEl = document.getElementById('choices-container');
+const skillChoiceEl = document.getElementById('skill-choice');
+const skillChoicesContainerEl = document.getElementById('skill-choices-container');
+const rebirthChoiceEl = document.getElementById('rebirth-choice');
+const rebirthChoicesContainerEl = document.getElementById('rebirth-choices-container');
+const gameoverPanelEl = document.getElementById('gameover-panel');
+const gameoverInfoEl = document.getElementById('gameover-info');
+
+function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+const keys = {};
+let gamePaused = false;
+let gameOver = false;
+
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  const keyNum = parseInt(e.key);
+  if (gamePaused && player.waitingForChoice) {
+    if (player.choiceMode === 'evolution' && keyNum >= 1 && keyNum <= player.availableChoices.length) selectEvolution(keyNum - 1);
+    else if (player.choiceMode === 'skill' && keyNum >= 1 && keyNum <= player.availableSkills.length) selectSkill(keyNum - 1);
+    else if (player.choiceMode === 'rebirth' && keyNum === 1) performRebirth();
+  }
+  if (gameOver && e.key.toLowerCase() === 'r') restartGame();
+});
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+const camera = {
+  x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2,
+  zoom: 1.0, targetZoom: 1.0,
+  update(targetX, targetY, dt) {
+    const lerpFactor = 1 - Math.pow(0.001, dt);
+    this.x += (targetX - this.x) * lerpFactor;
+    this.y += (targetY - this.y) * lerpFactor;
+    this.zoom += (this.targetZoom - this.zoom) * lerpFactor;
+  },
+  setZoom(playerSize) {
+    const baseSize = 30;
+    const maxZoom = 1.0;
+    const minZoom = 0.25;
+    const zoomRange = maxZoom - minZoom;
+    const sizeRatio = (playerSize - baseSize) / 400;
+    this.targetZoom = Math.max(minZoom, maxZoom - sizeRatio * zoomRange);
+  },
+  worldToScreen(wx, wy) {
+    return { x: (wx - this.x) * this.zoom + canvas.width / 2, y: (wy - this.y) * this.zoom + canvas.height / 2 };
+  },
+  isVisible(wx, wy, margin = 200) {
+    const s = this.worldToScreen(wx, wy);
+    return s.x > -margin && s.x < canvas.width + margin && s.y > -margin && s.y < canvas.height + margin;
+  }
+};
+
+function expandWorld(amount) {
+  const oldWidth = WORLD_WIDTH;
+  const oldHeight = WORLD_HEIGHT;
+  WORLD_WIDTH += amount;
+  WORLD_HEIGHT += amount;
+  const relX = player.wx / oldWidth;
+  const relY = player.wy / oldHeight;
+  player.wx = relX * WORLD_WIDTH;
+  player.wy = relY * WORLD_HEIGHT;
+  enemies.forEach(e => {
+    const relEx = e.wx / oldWidth;
+    const relEy = e.wy / oldHeight;
+    e.wx = relEx * WORLD_WIDTH;
+    e.wy = relEy * WORLD_HEIGHT;
+  });
+  camera.x = player.wx;
+  camera.y = player.wy;
+  addDecorationsForNewArea(oldWidth, oldHeight);
+  updateWorldInfo();
+}
+
+function addDecorationsForNewArea(oldWidth, oldHeight) {
+  const theme = EVOLUTION_TREE[player.currentStageId].theme;
+  const newArea = WORLD_WIDTH * WORLD_HEIGHT - oldWidth * oldHeight;
+  const oldArea = oldWidth * oldHeight;
+  const density = decorations.length / oldArea;
+  const newDecorCount = Math.floor(newArea * density);
+  for (let i = 0; i < newDecorCount; i++) decorations.push(new Decoration(theme));
+}
+
+function updateWorldInfo() {
+  worldInfoEl.textContent = `🗺️ マップ: ${WORLD_WIDTH} × ${WORLD_HEIGHT}`;
+}
+
+class Particle {
+  constructor(wx, wy, color) {
+    this.wx = wx; this.wy = wy;
+    this.vx = (Math.random() - 0.5) * 250;
+    this.vy = (Math.random() - 0.5) * 250;
+    this.life = 1.0;
+    this.color = color;
+    this.size = Math.random() * 6 + 3;
+  }
+  update(dt) {
+    this.wx += this.vx * dt;
+    this.wy += this.vy * dt;
+    this.life -= dt * 2;
+  }
+  draw(ctx) {
+    const s = camera.worldToScreen(this.wx, this.wy);
+    ctx.globalAlpha = this.life;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, this.size * camera.zoom, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+  }
+}
+
+class Food {
+  constructor(stage) {
+    this.size = stage.foodSize;
+    this.emoji = stage.foodEmoji;
+    this.respawn();
+  }
+  respawn() {
+    this.wx = Math.random() * (WORLD_WIDTH - 200) + 100;
+    this.wy = Math.random() * (WORLD_HEIGHT - 200) + 100;
+    this.wobble = Math.random() * Math.PI * 2;
+  }
+  update(dt) { this.wobble += dt * 3; }
+  draw(ctx) {
+    if (!camera.isVisible(this.wx, this.wy)) return;
+    const s = camera.worldToScreen(this.wx, this.wy);
+    ctx.font = `${this.size * camera.zoom}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.save();
+    ctx.translate(s.x, s.y + Math.sin(this.wobble) * 5 * camera.zoom);
+    ctx.fillText(this.emoji, 0, 0);
+    ctx.restore();
+  }
+}
+
+class Decoration {
+  constructor(theme) {
+    this.wx = Math.random() * WORLD_WIDTH;
+    this.wy = Math.random() * WORLD_HEIGHT;
+    this.theme = theme;
+    this.size = Math.random() * 40 + 30;
+    this.alpha = Math.random() * 0.3 + 0.2;
+    this.sway = Math.random() * Math.PI * 2;
+    if (theme === 'deepsea' || theme === 'sea') this.emoji = Math.random() < 0.5 ? '🫧' : '🪸';
+    else if (theme === 'swamp') this.emoji = '🌿';
+    else if (theme === 'land') this.emoji = Math.random() < 0.5 ? '🪨' : '🌾';
+    else if (theme === 'jungle') this.emoji = Math.random() < 0.5 ? '🌴' : '🌿';
+    else if (theme === 'volcano') this.emoji = Math.random() < 0.5 ? '🌋' : '🔥';
+    else this.emoji = '🌿';
+  }
+  update(dt) { this.sway += dt; }
+  draw(ctx) {
+    if (!camera.isVisible(this.wx, this.wy, 300)) return;
+    const s = camera.worldToScreen(this.wx, this.wy);
+    ctx.globalAlpha = this.alpha;
+    ctx.font = `${this.size * camera.zoom}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(Math.sin(this.sway) * 0.05);
+    ctx.fillText(this.emoji, 0, 0);
+    ctx.restore();
+    ctx.globalAlpha = 1.0;
+  }
+}
+
+class Player {
+  constructor() {
+    this.wx = WORLD_WIDTH / 2;
+    this.wy = WORLD_HEIGHT / 2;
+    this.currentStageId = 'plancton';
+    this.exp = 0;
+    this.evolutionCount = 0;
+    this.rebirthCount = 0;
+    this.lastExpansionTier = 0;
+    this.waitingForChoice = false;
+    this.choiceMode = null;
+    this.availableChoices = [];
+    this.availableSkills = [];
+    this.acquiredSkills = [];
+    this.skillLevels = {};
+    
+    this.speedMultiplier = 1.0;
+    this.sizeMultiplier = 1.0;
+    this.expMultiplier = 1.0;
+    this.magnetRange = 0;
+    this.shieldCount = 0;
+    this.regenCount = 0;
+    this.stealthRange = 1.0;
+    this.canDash = false;
+    this.dashSpeedMultiplier = 2.5;
+    this.dashCooldownReduction = 1.0;
+    this.dashCooldown = 0;
+    this.dashTimer = 0;
+    
+    // ✨ 無敵タイマー追加！
+    this.invincibleTimer = 0;
+    
+    this.updateStats();
+    camera.x = this.wx;
+    camera.y = this.wy;
+  }
+  updateStats() {
+    const stage = EVOLUTION_TREE[this.currentStageId];
+    this.emoji = stage.emoji;
+    this.baseSize = stage.size;
+    this.baseSpeed = stage.speed;
+    this.size = stage.size * this.sizeMultiplier;
+    this.speed = stage.speed * this.speedMultiplier;
+    stageNameEl.textContent = stage.name;
+    stageInfoEl.textContent = `進化回数: ${this.evolutionCount}`;
+    this.updateRebirthInfo();
+    this.updateSkillsDisplay();
+    this.updateInvincibleInfo();
+    camera.setZoom(this.size);
+  }
+  updateRebirthInfo() {
+    if (this.rebirthCount > 0) {
+      const bonus = this.rebirthCount * 10;
+      rebirthInfoEl.textContent = `🔄 転生回数: ${this.rebirthCount} (速度+${bonus}%, 経験値+${bonus}%)`;
+    } else {
+      rebirthInfoEl.textContent = '';
+    }
+  }
+  updateInvincibleInfo() {
+    if (this.invincibleTimer > 0) {
+      invincibleInfoEl.textContent = `🛡️ 無敵: ${this.invincibleTimer.toFixed(1)}秒`;
+    } else {
+      invincibleInfoEl.textContent = '';
+    }
+  }
+  updateSkillsDisplay() {
+    if (this.acquiredSkills.length === 0) {
+      skillsDisplayEl.textContent = '';
+      return;
+    }
+    skillsDisplayEl.innerHTML = '🎯 スキル:<br>' + this.acquiredSkills.map(s => {
+      const skill = SKILLS[s];
+      const level = this.skillLevels[s] || 1;
+      return `${skill.name} Lv.${level}`;
+    }).join('<br>');
+  }
+  update(dt) {
+    // 無敵タイマーの更新（gamePaused中でも減算する）
+    if (this.invincibleTimer > 0) {
+      this.invincibleTimer -= dt;
+      if (this.invincibleTimer < 0) this.invincibleTimer = 0;
+      this.updateInvincibleInfo();
+    }
+    
+    if (gamePaused || this.waitingForChoice || gameOver) return;
+    
+    let dx = 0, dy = 0;
+    if (keys['arrowup'] || keys['w']) dy -= 1;
+    if (keys['arrowdown'] || keys['s']) dy += 1;
+    if (keys['arrowleft'] || keys['a']) dx -= 1;
+    if (keys['arrowright'] || keys['d']) dx += 1;
+
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0) { dx /= len; dy /= len; }
+
+    let currentSpeed = this.speed;
+    if (this.canDash && keys[' '] && this.dashCooldown <= 0) {
+      currentSpeed *= this.dashSpeedMultiplier;
+      this.dashTimer = 0.3;
+      this.dashCooldown = 2.0 * this.dashCooldownReduction;
+    }
+    if (this.dashTimer > 0) this.dashTimer -= dt;
+    if (this.dashCooldown > 0) this.dashCooldown -= dt;
+
+    this.wx += dx * currentSpeed * dt;
+    this.wy += dy * currentSpeed * dt;
+
+    this.wx = Math.max(this.size / 2, Math.min(WORLD_WIDTH - this.size / 2, this.wx));
+    this.wy = Math.max(this.size / 2, Math.min(WORLD_HEIGHT - this.size / 2, this.wy));
+    
+    if (this.magnetRange > 0) {
+      foods.forEach(f => {
+        const dist = Math.hypot(this.wx - f.wx, this.wy - f.wy);
+        if (dist < this.magnetRange && dist > 0) {
+          const pull = 300 * (1 - dist / this.magnetRange);
+          f.wx += (this.wx - f.wx) / dist * pull * dt;
+          f.wy += (this.wy - f.wy) / dist * pull * dt;
+        }
+      });
+    }
+  }
+  draw(ctx) {
+    const s = camera.worldToScreen(this.wx, this.wy);
+    
+    // 🌈 無敵エフェクト：虹色のオーラ
+    if (this.invincibleTimer > 0) {
+      const pulse = (Math.sin(performance.now() / 100) + 1) / 2;
+      const hue = (performance.now() / 5) % 360;
+      ctx.globalAlpha = 0.4 + pulse * 0.3;
+      ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, this.size * 0.9 * camera.zoom, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // 外側のグロー
+      ctx.globalAlpha = 0.2;
+      ctx.strokeStyle = `hsl(${(hue + 180) % 360}, 100%, 70%)`;
+      ctx.lineWidth = 6 * camera.zoom;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, this.size * 1.1 * camera.zoom, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    }
+    
+    if (this.dashTimer > 0) {
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = '#ffeb3b';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, this.size * 0.8 * camera.zoom, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+    }
+    
+    if (this.shieldCount > 0) {
+      ctx.strokeStyle = 'rgba(100, 200, 255, 0.8)';
+      ctx.lineWidth = 4 * camera.zoom;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, this.size * 0.8 * camera.zoom, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    ctx.font = `${this.size * camera.zoom}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.emoji, s.x, s.y);
+  }
+  addExp(amount) {
+    const rebirthBonus = 1 + (this.rebirthCount * 0.1);
+    this.exp += amount * this.expMultiplier * rebirthBonus;
+    const stage = EVOLUTION_TREE[this.currentStageId];
+    
+    if (stage.next.length === 0) {
+      const ratio = Math.min(this.exp / REBIRTH_EXP_REQUIRED, 1);
+      expBarEl.style.width = `${ratio * 100}%`;
+      if (this.exp >= REBIRTH_EXP_REQUIRED) this.showRebirthChoice();
+    } else {
+      const ratio = Math.min(this.exp / stage.expToNext, 1);
+      expBarEl.style.width = `${ratio * 100}%`;
+      if (this.exp >= stage.expToNext) this.evolve();
+    }
+  }
+  evolve() {
+    const stage = EVOLUTION_TREE[this.currentStageId];
+    if (stage.isBranchPoint && stage.next.length > 1) {
+      this.showEvolutionChoice(stage.next);
+    } else {
+      this.currentStageId = stage.next[0];
+      this.exp = 0;
+      this.evolutionCount++;
+      this.updateStats();
+      showEvolutionMessage(EVOLUTION_TREE[this.currentStageId].name);
+      refreshDecorations();
+      
+      // 🛡️ 進化後3秒間無敵！
+      this.invincibleTimer = INVINCIBLE_DURATION;
+      this.updateInvincibleInfo();
+      
+      const currentTier = Math.floor(this.evolutionCount / EVOLUTION_TIER_INTERVAL);
+      if (currentTier > this.lastExpansionTier) {
+        this.lastExpansionTier = currentTier;
+        expandWorld(EXPAND_PER_EVOLUTION_TIER);
+      }
+      
+      this.showSkillChoice();
+    }
+  }
+  showEvolutionChoice(nextIds) {
+    this.waitingForChoice = true;
+    this.choiceMode = 'evolution';
+    this.availableChoices = nextIds;
+    gamePaused = true;
+    choicesContainerEl.innerHTML = '';
+    nextIds.forEach((id, index) => {
+      const stage = EVOLUTION_TREE[id];
+      const btn = document.createElement('button');
+      btn.className = 'choice-btn';
+      btn.innerHTML = `<span class="key">${index + 1}</span>${stage.emoji} ${stage.name.replace(stage.emoji + ' ', '')}`;
+      btn.onclick = () => selectEvolution(index);
+      choicesContainerEl.appendChild(btn);
+    });
+    evolutionChoiceEl.style.display = 'flex';
+  }
+  showSkillChoice() {
+    this.waitingForChoice = true;
+    this.choiceMode = 'skill';
+    const shuffled = SKILL_KEYS.sort(() => Math.random() - 0.5);
+    this.availableSkills = shuffled.slice(0, 3);
+    skillChoicesContainerEl.innerHTML = '';
+    this.availableSkills.forEach((skillId, index) => {
+      const skill = SKILLS[skillId];
+      const currentLevel = this.skillLevels[skillId] || 0;
+      const nextLevel = currentLevel + 1;
+      const btn = document.createElement('button');
+      btn.className = 'choice-btn';
+      let levelText = currentLevel > 0 ? `<span class="level">Lv.${currentLevel} → Lv.${nextLevel}</span>` : '';
+      btn.innerHTML = `<span class="key">${index + 1}</span>${skill.name}${levelText}<span class="desc">${skill.desc}</span>`;
+      btn.onclick = () => selectSkill(index);
+      skillChoicesContainerEl.appendChild(btn);
+    });
+    skillChoiceEl.style.display = 'flex';
+  }
+  showRebirthChoice() {
+    this.waitingForChoice = true;
+    this.choiceMode = 'rebirth';
+    gamePaused = true;
+    rebirthChoicesContainerEl.innerHTML = '';
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    const nextRebirth = this.rebirthCount + 1;
+    const bonus = nextRebirth * 10;
+    btn.innerHTML = `<span class="key">1</span>🔄 転生する<span class="desc">プランクトンから再スタート<br>スキル保持 + 速度/経験値+${bonus}%<br>マップもさらに広がる！</span>`;
+    btn.onclick = () => performRebirth();
+    rebirthChoicesContainerEl.appendChild(btn);
+    rebirthChoiceEl.style.display = 'flex';
+  }
+  tryEatEnemy(enemy) {
+    if (this.evolutionCount > enemy.evolutionCount) return 'eat';
+    else if (this.evolutionCount < enemy.evolutionCount) {
+      // 🛡️ 無敵状態なら食べられない！
+      if (this.invincibleTimer > 0) {
+        showEvolutionMessage('🛡️ 無敵で防いだ！');
+        return 'blocked';
+      }
+      if (this.shieldCount > 0) {
+        this.shieldCount--;
+        this.updateStats();
+        showEvolutionMessage('🛡️ 盾で防いだ！');
+        return 'blocked';
+      }
+      if (this.regenCount > 0) {
+        this.regenCount--;
+        this.updateStats();
+        showEvolutionMessage('💚 再生で復活！');
+        return 'blocked';
+      }
+      return 'eaten';
+    }
+    return 'ignore';
+  }
+}
+
+class Enemy {
+  constructor() {
+    this.currentStageId = 'plancton';
+    this.evolutionCount = 0;
+    this.exp = 0;
+    this.wx = Math.random() * WORLD_WIDTH;
+    this.wy = Math.random() * WORLD_HEIGHT;
+    this.wanderAngle = Math.random() * Math.PI * 2;
+    this.wanderTimer = 0;
+    this.mode = 'wander';
+    this.updateStats();
+  }
+  updateStats() {
+    const stage = EVOLUTION_TREE[this.currentStageId];
+    this.emoji = stage.emoji;
+    this.size = stage.size;
+    this.baseSpeed = stage.speed * 0.85;
+    this.expToNext = stage.expToNext;
+    this.theme = stage.theme;
+  }
+  update(dt) {
+    const distToPlayer = Math.hypot(this.wx - player.wx, this.wy - player.wy);
+    const detectRange = AI_DETECT_RANGE * player.stealthRange;
+    let dx = 0, dy = 0;
+    let currentSpeed = this.baseSpeed;
+    
+    if (distToPlayer < detectRange) {
+      if (this.evolutionCount < player.evolutionCount) {
+        this.mode = 'flee';
+        dx = this.wx - player.wx;
+        dy = this.wy - player.wy;
+        currentSpeed = this.baseSpeed * 1.15;
+      } else if (this.evolutionCount > player.evolutionCount) {
+        this.mode = 'chase';
+        dx = player.wx - this.wx;
+        dy = player.wy - this.wy;
+        currentSpeed = this.baseSpeed * 0.95;
+      } else {
+        this.mode = 'wander';
+      }
+    } else {
+      this.mode = 'wander';
+    }
+    
+    if (this.mode === 'wander') {
+      let nearestWeakerEnemy = null, nearestWeakerDist = Infinity;
+      let nearestStrongerEnemy = null, nearestStrongerDist = Infinity;
+      enemies.forEach(other => {
+        if (other === this) return;
+        const dist = Math.hypot(this.wx - other.wx, this.wy - other.wy);
+        if (dist < AI_DETECT_RANGE) {
+          if (this.evolutionCount > other.evolutionCount && dist < nearestWeakerDist) {
+            nearestWeakerDist = dist; nearestWeakerEnemy = other;
+          } else if (this.evolutionCount < other.evolutionCount && dist < nearestStrongerDist) {
+            nearestStrongerDist = dist; nearestStrongerEnemy = other;
+          }
+        }
+      });
+      if (nearestStrongerEnemy) {
+        this.mode = 'flee';
+        dx = this.wx - nearestStrongerEnemy.wx;
+        dy = this.wy - nearestStrongerEnemy.wy;
+        currentSpeed = this.baseSpeed * 1.1;
+      } else if (nearestWeakerEnemy) {
+        this.mode = 'chase';
+        dx = nearestWeakerEnemy.wx - this.wx;
+        dy = nearestWeakerEnemy.wy - this.wy;
+        currentSpeed = this.baseSpeed * 0.9;
+      }
+    }
+    
+    if (this.mode === 'chase' || this.mode === 'flee') {
+      const len = Math.hypot(dx, dy);
+      if (len > 0) { dx /= len; dy /= len; }
+    } else {
+      let nearestFood = null, nearestDist = Infinity;
+      foods.forEach(f => {
+        const dist = Math.hypot(this.wx - f.wx, this.wy - f.wy);
+        if (dist < nearestDist) { nearestDist = dist; nearestFood = f; }
+      });
+      if (nearestFood) {
+        dx = nearestFood.wx - this.wx;
+        dy = nearestFood.wy - this.wy;
+        const len = Math.hypot(dx, dy);
+        if (len > 0) { dx /= len; dy /= len; }
+      } else {
+        this.wanderTimer -= dt;
+        if (this.wanderTimer <= 0) {
+          this.wanderAngle = Math.random() * Math.PI * 2;
+          this.wanderTimer = 2 + Math.random() * 3;
+        }
+        dx = Math.cos(this.wanderAngle);
+        dy = Math.sin(this.wanderAngle);
+      }
+    }
+    
+    this.wx += dx * currentSpeed * dt;
+    this.wy += dy * currentSpeed * dt;
+    this.wx = Math.max(this.size / 2, Math.min(WORLD_WIDTH - this.size / 2, this.wx));
+    this.wy = Math.max(this.size / 2, Math.min(WORLD_HEIGHT - this.size / 2, this.wy));
+    
+    if (this.mode !== 'flee') {
+      for (let i = foods.length - 1; i >= 0; i--) {
+        const f = foods[i];
+        const dist = Math.hypot(this.wx - f.wx, this.wy - f.wy);
+        if (dist < (this.size / 2 + f.size / 2) * 0.8) {
+          foods.splice(i, 1);
+          this.exp += 1;
+          if (this.exp >= this.expToNext && EVOLUTION_TREE[this.currentStageId].next.length > 0) this.evolve();
+          break;
+        }
+      }
+    }
+  }
+  evolve() {
+    const stage = EVOLUTION_TREE[this.currentStageId];
+    if (stage.isBranchPoint) {
+      this.currentStageId = stage.next[Math.floor(Math.random() * stage.next.length)];
+    } else {
+      this.currentStageId = stage.next[0];
+    }
+    this.exp = 0;
+    this.evolutionCount++;
+    this.updateStats();
+  }
+  draw(ctx) {
+    if (!camera.isVisible(this.wx, this.wy, 300)) return;
+    const s = camera.worldToScreen(this.wx, this.wy);
+    let markerColor = '#ffffff';
+    if (this.evolutionCount < player.evolutionCount) markerColor = '#4caf50';
+    else if (this.evolutionCount > player.evolutionCount) markerColor = '#ff5252';
+    ctx.fillStyle = markerColor;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y - this.size * 0.7 * camera.zoom, 6 * camera.zoom, 0, Math.PI * 2);
+    ctx.fill();
+    let modeEmoji = '';
+    if (this.mode === 'chase') modeEmoji = '🎯';
+    else if (this.mode === 'flee') modeEmoji = '💨';
+    if (modeEmoji) {
+      ctx.font = `${20 * camera.zoom}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(modeEmoji, s.x + this.size * 0.5 * camera.zoom, s.y - this.size * 0.5 * camera.zoom);
+    }
+    ctx.font = `${this.size * camera.zoom}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.emoji, s.x, s.y);
+  }
+}
+
+let player;
+let foods = [];
+let enemies = [];
+let decorations = [];
+let particles = [];
+let lastTime = performance.now();
+let evolutionTimer = 0;
+
+function initGame() {
+  WORLD_WIDTH = INITIAL_WORLD_SIZE;
+  WORLD_HEIGHT = INITIAL_WORLD_SIZE;
+  player = new Player();
+  foods = [];
+  enemies = [];
+  decorations = [];
+  particles = [];
+  gameOver = false;
+  gamePaused = false;
+  refreshDecorations();
+  spawnFoods();
+  spawnEnemies();
+  updateWorldInfo();
+}
+
+function refreshDecorations() {
+  decorations = [];
+  const theme = EVOLUTION_TREE[player.currentStageId].theme;
+  const area = WORLD_WIDTH * WORLD_HEIGHT;
+  const density = 150 / (INITIAL_WORLD_SIZE * INITIAL_WORLD_SIZE);
+  const count = Math.floor(area * density);
+  for (let i = 0; i < count; i++) decorations.push(new Decoration(theme));
+}
+
+function spawnFoods() {
+  const stage = EVOLUTION_TREE[player.currentStageId];
+  const area = WORLD_WIDTH * WORLD_HEIGHT;
+  const density = 30 / (INITIAL_WORLD_SIZE * INITIAL_WORLD_SIZE);
+  const targetCount = Math.floor(area * density);
+  while (foods.length < targetCount) foods.push(new Food(stage));
+}
+
+function spawnEnemies() {
+  while (enemies.length < MAX_ENEMIES) {
+    const enemy = new Enemy();
+    let attempts = 0;
+    while (Math.hypot(enemy.wx - player.wx, enemy.wy - player.wy) < 800 && attempts < 10) {
+      enemy.wx = Math.random() * WORLD_WIDTH;
+      enemy.wy = Math.random() * WORLD_HEIGHT;
+      attempts++;
+    }
+    enemies.push(enemy);
+  }
+}
+
+function selectEvolution(index) {
+  const choiceId = player.availableChoices[index];
+  player.currentStageId = choiceId;
+  player.exp = 0;
+  player.evolutionCount++;
+  player.waitingForChoice = false;
+  player.choiceMode = null;
+  player.availableChoices = [];
+  player.updateStats();
+  evolutionChoiceEl.style.display = 'none';
+  showEvolutionMessage(EVOLUTION_TREE[choiceId].name);
+  refreshDecorations();
+  
+  // 🛡️ 進化後3秒間無敵！
+  player.invincibleTimer = INVINCIBLE_DURATION;
+  player.updateInvincibleInfo();
+  
+  const currentTier = Math.floor(player.evolutionCount / EVOLUTION_TIER_INTERVAL);
+  if (currentTier > player.lastExpansionTier) {
+    player.lastExpansionTier = currentTier;
+    expandWorld(EXPAND_PER_EVOLUTION_TIER);
+  }
+  
+  player.showSkillChoice();
+}
+
+function selectSkill(index) {
+  const skillId = player.availableSkills[index];
+  const skill = SKILLS[skillId];
+  if (!player.acquiredSkills.includes(skillId)) player.acquiredSkills.push(skillId);
+  player.skillLevels[skillId] = (player.skillLevels[skillId] || 0) + 1;
+  skill.apply(player, player.skillLevels[skillId]);
+  player.waitingForChoice = false;
+  player.choiceMode = null;
+  player.availableSkills = [];
+  player.updateStats();
+  skillChoiceEl.style.display = 'none';
+  gamePaused = false;
+  showEvolutionMessage(`${skill.name} Lv.${player.skillLevels[skillId]} 獲得！`);
+}
+
+function performRebirth() {
+  player.rebirthCount++;
+  player.currentStageId = 'plancton';
+  player.exp = 0;
+  player.evolutionCount = 0;
+  player.lastExpansionTier = 0;
+  player.waitingForChoice = false;
+  player.choiceMode = null;
+  
+  const rebirthBonus = 1 + (player.rebirthCount * 0.1);
+  player.speedMultiplier *= rebirthBonus;
+  player.expMultiplier *= rebirthBonus;
+  
+  expandWorld(EXPAND_PER_REBIRTH);
+  
+  player.wx = WORLD_WIDTH / 2;
+  player.wy = WORLD_HEIGHT / 2;
+  
+  // 🛡️ 転生後も無敵！
+  player.invincibleTimer = INVINCIBLE_DURATION;
+  
+  player.updateStats();
+  rebirthChoiceEl.style.display = 'none';
+  gamePaused = false;
+  
+  showEvolutionMessage(`🔄 転生！ (第${player.rebirthCount}回)`);
+  refreshDecorations();
+  
+  for (let i = 0; i < 30; i++) particles.push(new Particle(player.wx, player.wy, '#ffeb3b'));
+}
+
+function showEvolutionMessage(text) {
+  evolutionMsgEl.textContent = `✨ ${text} ✨`;
+  evolutionMsgEl.style.opacity = '1';
+  evolutionMsgEl.style.transform = 'translate(-50%, -50%) scale(1)';
+  evolutionTimer = 2.0;
+}
+
+function triggerGameOver(eatenBy) {
+  gameOver = true;
+  gamePaused = true;
+  gameoverInfoEl.innerHTML = `進化回数: ${player.evolutionCount}<br>転生回数: ${player.rebirthCount}<br>マップサイズ: ${WORLD_WIDTH} × ${WORLD_HEIGHT}<br>食べられた相手: ${eatenBy.emoji} (進化回数: ${eatenBy.evolutionCount})`;
+  gameoverPanelEl.style.display = 'flex';
+}
+
+function restartGame() {
+  gameoverPanelEl.style.display = 'none';
+  initGame();
+}
+window.restartGame = restartGame;
+
+function checkCollisions() {
+  if (gamePaused || gameOver) return;
+  
+  for (let i = foods.length - 1; i >= 0; i--) {
+    const food = foods[i];
+    const dist = Math.hypot(player.wx - food.wx, player.wy - food.wy);
+    if (dist < (player.size / 2 + food.size / 2) * 0.8) {
+      foods.splice(i, 1);
+      player.addExp(1);
+      for (let j = 0; j < 10; j++) particles.push(new Particle(food.wx, food.wy, '#ffeb3b'));
+    }
+  }
+  
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const enemy = enemies[i];
+    const dist = Math.hypot(player.wx - enemy.wx, player.wy - enemy.wy);
+    const contactDist = (player.size / 2 + enemy.size / 2) * 0.7;
+    if (dist < contactDist) {
+      const result = player.tryEatEnemy(enemy);
+      if (result === 'eat') {
+        for (let j = 0; j < 15; j++) particles.push(new Particle(enemy.wx, enemy.wy, '#ff5252'));
+        enemies.splice(i, 1);
+        player.addExp(3);
+      } else if (result === 'eaten') {
+        for (let j = 0; j < 20; j++) particles.push(new Particle(player.wx, player.wy, '#ff0000'));
+        triggerGameOver(enemy);
+        return;
+      }
+    }
+  }
+  
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      if (i === j || !enemies[i] || !enemies[j]) continue;
+      const e1 = enemies[i], e2 = enemies[j];
+      const dist = Math.hypot(e1.wx - e2.wx, e1.wy - e2.wy);
+      const contactDist = (e1.size / 2 + e2.size / 2) * 0.7;
+      if (dist < contactDist && e1.evolutionCount > e2.evolutionCount) {
+        for (let k = 0; k < 12; k++) particles.push(new Particle(e2.wx, e2.wy, '#ff9800'));
+        enemies.splice(j, 1);
+        e1.exp += 3;
+        if (e1.exp >= e1.expToNext && EVOLUTION_TREE[e1.currentStageId].next.length > 0) e1.evolve();
+        break;
+      }
+    }
+  }
+}
+
+function drawMinimap() {
+  miniCtx.clearRect(0, 0, miniCanvas.width, miniCanvas.height);
+  miniCtx.fillStyle = EVOLUTION_TREE[player.currentStageId].bgColor;
+  miniCtx.fillRect(0, 0, miniCanvas.width, miniCanvas.height);
+  const px = (player.wx / WORLD_WIDTH) * miniCanvas.width;
+  const py = (player.wy / WORLD_HEIGHT) * miniCanvas.height;
+  enemies.forEach(e => {
+    const ex = (e.wx / WORLD_WIDTH) * miniCanvas.width;
+    const ey = (e.wy / WORLD_HEIGHT) * miniCanvas.height;
+    if (e.evolutionCount < player.evolutionCount) miniCtx.fillStyle = '#4caf50';
+    else if (e.evolutionCount > player.evolutionCount) miniCtx.fillStyle = '#ff5252';
+    else miniCtx.fillStyle = '#ffffff';
+    miniCtx.fillRect(ex - 2, ey - 2, 4, 4);
+  });
+  miniCtx.fillStyle = '#ffeb3b';
+  miniCtx.beginPath();
+  miniCtx.arc(px, py, 4, 0, Math.PI * 2);
+  miniCtx.fill();
+  miniCtx.fillStyle = 'rgba(255,255,255,0.5)';
+  foods.forEach(f => {
+    const fx = (f.wx / WORLD_WIDTH) * miniCanvas.width;
+    const fy = (f.wy / WORLD_HEIGHT) * miniCanvas.height;
+    miniCtx.fillRect(fx - 1, fy - 1, 2, 2);
+  });
+}
+
+function update(dt) {
+  player.update(dt);
+  camera.update(player.wx, player.wy, dt);
+  if (!gamePaused && !gameOver) {
+    enemies.forEach(e => e.update(dt));
+    foods.forEach(f => f.update(dt));
+    decorations.forEach(d => d.update(dt));
+    for (let i = particles.length - 1; i >= 0; i--) {
+      particles[i].update(dt);
+      if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+    checkCollisions();
+    spawnFoods();
+    spawnEnemies();
+  }
+  if (evolutionTimer > 0) {
+    evolutionTimer -= dt;
+    if (evolutionTimer <= 0) {
+      evolutionMsgEl.style.opacity = '0';
+      evolutionMsgEl.style.transform = 'translate(-50%, -50%) scale(0.5)';
+    }
+  }
+}
+
+function draw() {
+  const stage = EVOLUTION_TREE[player.currentStageId];
+  ctx.fillStyle = stage.bgColor;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const topLeft = camera.worldToScreen(0, 0);
+  const bottomRight = camera.worldToScreen(WORLD_WIDTH, WORLD_HEIGHT);
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 4 * camera.zoom;
+  ctx.strokeRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+  decorations.forEach(d => d.draw(ctx));
+  foods.forEach(f => f.draw(ctx));
+  enemies.forEach(e => e.draw(ctx));
+  particles.forEach(p => p.draw(ctx));
+  player.draw(ctx);
+  drawMinimap();
+}
+
+function gameLoop(currentTime) {
+  const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+  lastTime = currentTime;
+  update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+initGame();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
